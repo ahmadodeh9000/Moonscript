@@ -3,6 +3,7 @@
 
 #include "interpreter.h"
 #include "common.h"
+#include "fn.h"
 
 
 
@@ -22,6 +23,7 @@ double power(double base, int exp) {
 
 /*============DECLARING HELPER FUNCTIONS========================*/
 static Value evaluate(Expr *expr,Interpreter* current_interp);
+static void execute(Interpreter *interp, Stmt *stmt);
 static bool  is_truthy(Value v);
 static bool  is_equal(Value a, Value b);
 static void  runtime_error(Token op, const char *msg);
@@ -43,6 +45,7 @@ static bool is_equal(Value a, Value b) {
         case VAL_NUMBER:    return AS_NUMBER(a) == AS_NUMBER(b);
         case VAL_STRING:    return strcmp(AS_STRING(a), AS_STRING(b)) == 0;
         case VAL_BOOL:      return AS_BOOL(a) == AS_BOOL(b);
+        default: break;
     }
 
     return false;
@@ -291,6 +294,72 @@ static Value evaluate(Expr *expr,Interpreter* current_interp) {
         }
 
 
+        case EXPR_CALL: {
+            Value callee = evaluate(expr->call.calle, current_interp);
+
+            if (!IS_FN(callee)) {
+                runtime_error(expr->call.paren, "Can only call functions.");
+            }
+
+            MSFn *fn = AS_FN(callee);
+
+
+            if (expr->call.arg_count != fn->param_count) {
+                fprintf(stderr, "Expected %d arguments but got %d.\n",
+                        fn->param_count, expr->call.arg_count);
+                exit(70);
+            }
+
+                        // evaluate arguments
+            Value *args = malloc(fn->param_count * sizeof(Value));
+            for (int i = 0; i < expr->call.arg_count; i++)
+                args[i] = evaluate(expr->call.args[i], current_interp);
+
+            // new scope — parent is the CLOSURE, not current env
+            Environment *fn_env = make_environment(fn->closure);
+
+            // bind parameters to arguments
+            for (int i = 0; i < fn->param_count; i++)
+                env_define(fn_env,
+                           fn->params[i].start,
+                           fn->params[i].length,
+                           args[i]);
+            free(args);
+
+
+                        // save state
+            Environment *prev_env = current_interp->env;
+            jmp_buf      prev_jump;
+            memcpy(prev_jump, current_interp->ret_jump, sizeof(jmp_buf));
+                    
+            int prev_returning = current_interp->returning;
+
+            current_interp->env       = fn_env;
+            current_interp->returning = 0;
+
+            Value result = NIL_VAL;
+
+
+            if (setjmp(current_interp->ret_jump) == 0) {
+                // run body normally
+                for (int i = 0; i < fn->body_count; i++)
+                    execute(current_interp, fn->body[i]);
+            } else {
+                // ret was called — longjmp lands here
+                result = current_interp->ret_value;
+            }
+
+            // restore state
+            current_interp->env = prev_env;
+            current_interp->returning = prev_returning;
+            memcpy(current_interp->ret_jump, prev_jump, sizeof(jmp_buf));
+
+            free_environment(fn_env);
+            return result;
+
+        }
+
+
     }
 
 
@@ -313,6 +382,12 @@ static void print_value(Value v) {
             break;
         }
         case VAL_STRING: printf("%s\n", AS_STRING(v)); break;
+
+        case VAL_FN:
+            printf("<fn %.*s>\n",
+                   AS_FN(v)->name.length,
+                   AS_FN(v)->name.start);
+            break;
     }
 }
 
@@ -385,6 +460,26 @@ static void execute(Interpreter *interp, Stmt *stmt) {
             while (is_truthy(evaluate(stmt->as.while_stmt.condition, interp))) {
                 execute(interp, stmt->as.while_stmt.body);
             }
+            break;
+        }
+
+
+        case STMT_FN: {
+            MSFn  *fn  = make_msfn(&stmt->as.fn, interp->env);
+            Value  val = FN_VAL(fn);
+            env_define(interp->env,
+                       stmt->as.fn.name.start,
+                       stmt->as.fn.name.length,
+                       val);
+            break;
+        }
+
+        case STMT_RET: {
+            Value val = NIL_VAL;
+            if (stmt->as.ret.value)
+                val = evaluate(stmt->as.ret.value, interp);
+            interp->ret_value = val;
+            longjmp(interp->ret_jump, 1);
             break;
         }
 

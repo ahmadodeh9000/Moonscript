@@ -85,6 +85,18 @@ Expr *make_logical(Expr *left, Token op, Expr *right) {
     e->logical.left  = left;
     e->logical.op    = op;
     e->logical.right = right;
+
+    return e;
+}
+
+Expr *make_call(Expr *callee, Expr **args, int arg_count, Token paren) {
+    Expr *e = malloc(sizeof(Expr));
+    e->type = EXPR_CALL;
+    e->call.calle     = callee;
+    e->call.args      = args;
+    e->call.arg_count = arg_count;
+    e->call.paren     = paren;
+
     return e;
 }
 
@@ -119,6 +131,15 @@ void clear_expr(Expr* expr) {
         case EXPR_LOGICAL: {
             clear_expr(expr->logical.left);
             clear_expr(expr->logical.right);
+            break;
+        }
+
+        case EXPR_CALL: {
+            for (int i = 0; i < expr->call.arg_count; ++i) {
+                clear_expr(expr->call.args[i]);
+            }
+            clear_expr(expr->call.calle);
+
             break;
         }
 
@@ -254,6 +275,15 @@ char *print_expr(Expr *expr) {
                 left, right);
             free(left);
             free(right);
+            return result;
+        }
+
+
+        case EXPR_CALL: {
+            char *callee = print_expr(expr->call.calle);
+            char *result = malloc(strlen(callee) + 64);
+            sprintf(result, "(call %s [%d args])", callee, expr->call.arg_count);
+            free(callee);
             return result;
         }
     }

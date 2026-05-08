@@ -6,17 +6,18 @@
 
 #define ENV_CAPACITY 64
 
-typedef struct {
-    char* key;
-    Value val;
-} Entry;
-
 typedef struct Environment Environment;
+
+typedef struct {
+    char  *key;
+    Value  val;
+} Entry;
 
 struct Environment {
     Entry        entries[ENV_CAPACITY];
     int          count;
-    Environment *enclosing;   // parent scope
+    Environment *enclosing;
+    int          ref_count;   
 };
 
 Environment *make_environment(Environment *enclosing);

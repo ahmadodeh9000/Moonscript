@@ -34,6 +34,8 @@ static Expr* unary(Parser *p);
 static Expr* primary(Parser *p);
 static Expr *logic_or(Parser *p) ;
 static Expr *logic_and(Parser *p);
+static Expr *call(Parser *p);
+static Expr *finish_call(Parser *p, Expr *callee);
 
 static Stmt *statement(Parser *p);
 static Stmt *declaration(Parser *p);
@@ -44,6 +46,8 @@ static Stmt *block_statement(Parser *p);
 static Stmt *if_statement(Parser *p);
 static Stmt *while_statement(Parser *p);
 static Stmt *for_statement(Parser *p);
+static Stmt *fn_declaration(Parser *p);
+static Stmt *ret_statement(Parser *p);
 
 
 
@@ -142,6 +146,37 @@ static Expr *assignment(Parser *p) {
     return expr;
 }
 
+static Expr *call(Parser *p) {
+    Expr *expr = primary(p);
+
+    // keep consuming calls as long as we see (
+    while (MATCH(p, TOKEN_LPAREN)) {
+        expr = finish_call(p, expr);
+    }
+
+    return expr;
+}
+
+static Expr *finish_call(Parser *p, Expr *callee) {
+    int   capacity = 8, count = 0;
+    Expr **args = malloc(capacity * sizeof(Expr*));
+
+    if (!check(p, TOKEN_RPAREN)) {
+        do {
+            if (count >= 255) {
+                parser_error(p, peek(p), "Too many arguments.");
+            }
+            if (count >= capacity) {
+                capacity *= 2;
+                args = realloc(args, capacity * sizeof(Expr*));
+            }
+            args[count++] = expression(p);
+        } while (MATCH(p, TOKEN_COMMA));
+    }
+
+    Token paren = consume(p, TOKEN_RPAREN, "Expect ')' after arguments.");
+    return make_call(callee, args, count, paren);
+}
 
 static Expr *logic_or(Parser *p) {
     Expr *expr = logic_and(p);
@@ -231,7 +266,7 @@ static Expr *unary(Parser *p) {
         return make_unary(op, right);
     }
 
-    return primary(p);
+    return call(p);
 }
 
 static Expr *primary(Parser *p) {
@@ -259,11 +294,13 @@ static Expr *primary(Parser *p) {
 /*===========================================================================================*/
 
 static Stmt *statement(Parser *p) {
+    if (MATCH(p, TOKEN_RET))    return ret_statement(p); 
     if (MATCH(p, TOKEN_IF))     return if_statement(p);
     if (MATCH(p, TOKEN_WHILE))  return while_statement(p);
     if (MATCH(p, TOKEN_FOR))    return for_statement(p);
     if (MATCH(p, TOKEN_PRINT))  return print_statement(p);
     if (MATCH(p, TOKEN_LBRACE)) return block_statement(p);
+
 
     return expression_statement(p);
 }
@@ -313,12 +350,7 @@ static Stmt *block_statement(Parser *p) {
     return make_block_stmt(stmts, count);
 }
 
-static Stmt *declaration(Parser *p) {
-    if (MATCH(p, TOKEN_LET))
-        return let_declaration(p);
 
-    return statement(p);
-}
 
 static Stmt *if_statement(Parser *p) {
     consume(p, TOKEN_LPAREN, "Expect '(' after 'if'.");
@@ -397,6 +429,62 @@ static Stmt *for_statement(Parser *p) {
     }
 
     return body;
+}
+
+
+static Stmt *fn_declaration(Parser *p) {
+    Token name = consume(p, TOKEN_IDENT, "Expect function name.");
+    consume(p, TOKEN_LPAREN, "Expect '(' after function name.");
+
+    // parse parameters
+    int    capacity = 8, count = 0;
+    Token *params = malloc(capacity * sizeof(Token));
+
+    if (!check(p, TOKEN_RPAREN)) {
+        do {
+            if (count >= 255) parser_error(p, peek(p), "Too many parameters.");
+            if (count >= capacity) {
+                capacity *= 2;
+                params = realloc(params, capacity * sizeof(Token));
+            }
+            params[count++] = consume(p, TOKEN_IDENT, "Expect parameter name.");
+        } while (MATCH(p, TOKEN_COMMA));
+    }
+    consume(p, TOKEN_RPAREN, "Expect ')' after parameters.");
+    consume(p, TOKEN_LBRACE, "Expect '{' before function body.");
+
+    // parse the function body block inline (same logic as block_statement)
+    int    body_capacity = 8, body_count = 0;
+    Stmt **body = malloc(body_capacity * sizeof(Stmt*));
+
+    while (!check(p, TOKEN_RBRACE) && !at_the_end(p)) {
+        if (body_count >= body_capacity) {
+            body_capacity *= 2;
+            body = realloc(body, body_capacity * sizeof(Stmt*));
+        }
+        body[body_count++] = declaration(p);
+    }
+
+    consume(p, TOKEN_RBRACE, "Expect '}' after function body.");
+
+    return make_fn_stmt(name, params, count, body, body_count);
+}
+
+static Stmt *ret_statement(Parser *p) {
+    Token keyword = prev(p);
+    Expr *value   = NULL;
+
+    if (!check(p, TOKEN_SEMICOLON))
+        value = expression(p);
+
+    consume(p, TOKEN_SEMICOLON, "Expect ';' after return value.");
+    return make_ret_stmt(keyword, value);
+}
+
+static Stmt *declaration(Parser *p) {
+    if (MATCH(p, TOKEN_FUN)) return fn_declaration(p);  
+    if (MATCH(p, TOKEN_LET)) return let_declaration(p);
+    return statement(p);
 }
 
 /*===========================================================================================*/

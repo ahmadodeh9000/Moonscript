@@ -61,7 +61,25 @@ Stmt *make_while_stmt(Expr *condition, Stmt *body) {
     return s;
 }
 
+Stmt *make_fn_stmt(Token name, Token *params, int param_count,
+                   Stmt **body, int body_count) {
+    Stmt *s = malloc(sizeof(Stmt));
+    s->type = STMT_FN;
+    s->as.fn.name        = name;
+    s->as.fn.params      = params;
+    s->as.fn.param_count = param_count;
+    s->as.fn.body        = body;
+    s->as.fn.body_count  = body_count;
+    return s;
+}
 
+Stmt *make_ret_stmt(Token keyword, Expr *value) {
+    Stmt *s = malloc(sizeof(Stmt));
+    s->type = STMT_RET;
+    s->as.ret.keyword = keyword;
+    s->as.ret.value   = value;
+    return s;
+}
 
 
 /*==========CLEAR STATEMENTS==========================================================*/
@@ -87,6 +105,19 @@ void clear_stmt(Stmt *stmt) {
         case STMT_WHILE:
             clear_expr(stmt->as.while_stmt.condition);
             clear_stmt(stmt->as.while_stmt.body);
+            break;
+
+
+
+        case STMT_FN:
+            free(stmt->as.fn.params);
+            for (int i = 0; i < stmt->as.fn.body_count; i++)
+                clear_stmt(stmt->as.fn.body[i]);
+            free(stmt->as.fn.body);
+            break;
+
+        case STMT_RET:
+            clear_expr(stmt->as.ret.value);
             break;
     }
     free(stmt);

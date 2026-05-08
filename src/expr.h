@@ -12,6 +12,7 @@ typedef enum {
     EXPR_VARIABLE,
     EXPR_ASSIGN,
     EXPR_LOGICAL,
+    EXPR_CALL
 } ExprType;
 
 
@@ -57,6 +58,13 @@ struct Expr {
             Token op;
             Expr* right;
         } logical;
+
+        struct {
+            Expr* calle; /* the function that being called  */
+            Expr** args; /* the function's arguments        */
+            int arg_count;
+            Token paren; /* closing ) for error reporting.  */
+        } call;
         
     } ;
     
@@ -69,7 +77,8 @@ Expr* make_unary(Token op, Expr* right);
 Expr* make_grouping(Expr* expr);
 Expr* make_variable(Token name);
 Expr* make_assign(Token name,Expr* expr);
-Expr *make_logical(Expr *left, Token op, Expr *right);
+Expr* make_logical(Expr *left, Token op, Expr *right);
+Expr* make_call(Expr* calle, Expr** args, int arg_count, Token paren);
 
 char *print_expr(Expr* expr); 
 void clear_expr(Expr* expr);

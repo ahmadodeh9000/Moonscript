@@ -6,8 +6,15 @@
 #include "stmt.h"
 #include "environment.h"
 
+#include <setjmp.h>
+
 typedef struct {
     Environment *env;
+
+    // return mechanism
+    jmp_buf      ret_jump;
+    Value        ret_value;
+    int          returning;
 } Interpreter;
 
 Interpreter*  init_interpreter();
