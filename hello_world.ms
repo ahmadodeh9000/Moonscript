@@ -136,8 +136,7 @@ print(apply(double, 5));    // 10
 print(apply(double, 21));   // 42
 
 // ── functions as values ──────────────────────
-           // this would error — functions aren't anonymous yet
-                           // but storing a returned fn works:
+           
 fn makeAdder(n) {
     fn adder(x) {
         ret x + n;
